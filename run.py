@@ -155,6 +155,7 @@ def main(opts):
         model_old = None
     else: 
         model_old = make_model(opts, classes=tasks.get_per_task_classes(opts.dataset, opts.task, opts.step - 1))
+        model_old = model_old.cuda(device)
 
     if opts.fix_bn:
         model.fix_bn()
@@ -319,13 +320,12 @@ def main(opts):
                   model, trainer, optimizer, scheduler, cur_epoch, best_score)
         logger.info("[!] Checkpoint saved.")
 
-    torch.distributed.barrier()
+    # torch.distributed.barrier()
 
     # xxx From here starts the test code
     logger.info("*** Test the model on all seen classes...")
     # make data loader
     test_loader = data.DataLoader(test_dst, batch_size=opts.batch_size if opts.crop_val else 1,
-                                  sampler=DistributedSampler(test_dst, num_replicas=world_size, rank=rank),
                                   num_workers=opts.num_workers)
     #we want print the samples
     tot = len(test_loader)

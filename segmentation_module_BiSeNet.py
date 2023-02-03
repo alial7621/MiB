@@ -88,6 +88,10 @@ class IncrementalSegmentationBiSeNet(nn.Module):
             out_sv1 = functional.interpolate(out_sv1, size=out_size, mode="bilinear", align_corners=False)
             out_sv2 = functional.interpolate(out_sv2, size=out_size, mode="bilinear", align_corners=False)
             return out, out_sv1, out_sv2
+        else:
+            out = self._network(x)
+            out = functional.interpolate(out, size=out_size, mode="bilinear", align_corners=False)
+            return out
        # sem_logits = functional.interpolate(sem_logits, size=out_size, mode="bilinear", align_corners=False)
         #if ret_intermediate:
          #   return sem_logits, {"body": out[1], "pre_logits": out[2]}

@@ -129,9 +129,9 @@ class VOCSegmentationIncremental(data.Dataset):
             if idxs_path is not None and os.path.exists(idxs_path):
                 idxs = np.load(idxs_path).tolist()
             else:
-                idxs = filter_images(full_voc, labels, labels_old, overlap=overlap)
+                idxs, _ = filter_images(full_voc, labels, labels_old, overlap=overlap)
                 if idxs_path is not None:
-                    np.save(idxs_path, np.array(idxs[0], dtype=int))
+                    np.save(idxs_path, np.array(idxs, dtype=int))
 
             if train:
                 masking_value = 0

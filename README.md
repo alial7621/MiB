@@ -1,4 +1,4 @@
-#Changes in this repository
+# Changes in this repository
 This repository has been modified specifically for training on a custom dataset. Since the dataset utilizes coco-like annotation, this repository can be further customized to work with any coco-like dataset. Furthermore, the original code supports parallel processing, while the code I've forked was designed for single GPU training but had some issues that have now been resolved in this repository.
 
 # Modeling the Background for Incremental Learning in Semantic Segmentation

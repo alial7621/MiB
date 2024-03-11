@@ -16,6 +16,8 @@ from torch.utils import data
 from torch import distributed
 
 from dataset import VOCSegmentationIncremental, AdeSegmentationIncremental
+from dataset.dent import CocoDataset
+import dataset.dent as dent_dataset
 from dataset import transform
 from metrics import StreamSegMetrics
 
@@ -75,6 +77,9 @@ def get_dataset(opts):
         dataset = VOCSegmentationIncremental
     elif opts.dataset == 'ade':
         dataset = AdeSegmentationIncremental
+    # add our custom dataset
+    elif opts.dataset == 'dent':
+        dataset = CocoDataset
     else:
         raise NotImplementedError
 
@@ -84,25 +89,60 @@ def get_dataset(opts):
     if not os.path.exists(path_base):
         os.makedirs(path_base, exist_ok=True)
 
-    train_dst = dataset(root=opts.data_root, train=True, transform=train_transform,
-                        labels=list(labels), labels_old=list(labels_old),
-                        idxs_path=path_base + f"/train-{opts.step}.npy",
-                        masking=not opts.no_mask, overlap=opts.overlap)
+    # initialization for our dataset is different than others
+    if opts.dataset != 'dent':
+        train_dst = dataset(root=opts.data_root, train=True, transform=train_transform,
+                            labels=list(labels), labels_old=list(labels_old),
+                            idxs_path=path_base + f"/train-{opts.step}.npy",
+                            masking=not opts.no_mask, overlap=opts.overlap)
+    else:
+        # get path to annotation file then get then dataset object
+        annot_path = os.path.join(opts.annot_root, (dent_dataset.classes[(opts.step+1)]+"_train.json"))
+        train_dst = dataset(root=opts.data_root, annot_path=annot_path, 
+                            step=opts.step)
+                          
 
     if not opts.no_cross_val:  # if opts.cross_val:
         train_len = int(0.8 * len(train_dst))
         val_len = len(train_dst)-train_len
         train_dst, val_dst = torch.utils.data.random_split(train_dst, [train_len, val_len])
-    else:  
-        val_dst = dataset(root=opts.data_root, train=False, transform=val_transform,
-                          labels=list(labels), labels_old=list(labels_old),
-                          idxs_path=path_base + f"/val-{opts.step}.npy",
-                          masking=not opts.no_mask, overlap=True)
+    else:
+        # initialization for our dataset is different than others
+        if opts.dataset != 'dent':
+            val_dst = dataset(root=opts.data_root, train=False, transform=val_transform,
+                              labels=list(labels), labels_old=list(labels_old),
+                              idxs_path=path_base + f"/val-{opts.step}.npy",
+                              masking=not opts.no_mask, overlap=True)
+        else:
+            # get path to annotation file then get then dataset object
+            annot_path = os.path.join(opts.annot_root, (dent_dataset.classes[(opts.step+1)]+"_val.json"))
+            val_dst = dataset(root=opts.data_root, annot_path=annot_path, 
+                                step=opts.step)
 
     image_set = 'train' if opts.val_on_trainset else 'val'
-    test_dst = dataset(root=opts.data_root, train=opts.val_on_trainset, transform=val_transform,
-                       labels=list(labels_cum),
-                       idxs_path=path_base + f"/test_on_{image_set}-{opts.step}.npy")
+    if opts.dataset != 'dent':
+        test_dst = dataset(root=opts.data_root, train=opts.val_on_trainset, transform=val_transform,
+                          labels=list(labels_cum),
+                          idxs_path=path_base + f"/test_on_{image_set}-{opts.step}.npy")
+    else:
+        if opts.step == 0:
+            test_dst = []
+        elif opts.step == 1:
+            # -------##### I used their validation set as test set But You can #####----
+            # -------##### also change the annot path to the whole dataset #####--------
+            # Validation of PERM dataset as test dataset
+            annot_path = os.path.join(opts.annot_root, (dent_dataset.classes[(opts.step)]+"_val.json"))
+            test_dst = dataset(root=opts.data_root, annot_path=annot_path, step=0)
+        else:
+            # Validation of PERM dataset as first test dataset
+            annot_path = os.path.join(opts.annot_root, (dent_dataset.classes[(opts.step-1)]+"_val.json"))
+            test_dst_1 = dataset(root=opts.data_root, annot_path=annot_path, step=0)
+            
+            # Validation of PRIM dataset as second test dataset
+            annot_path = os.path.join(opts.annot_root, (dent_dataset.classes[(opts.step)]+"_val.json"))
+            test_dst_2 = dataset(root=opts.data_root, annot_path=annot_path, step=1)
+
+            return train_dst, val_dst, test_dst_1, test_dst_2, len(labels_cum)
 
     return train_dst, val_dst, test_dst, len(labels_cum)
 
@@ -130,7 +170,13 @@ def main(opts):
     np.random.seed(opts.random_seed)
     random.seed(opts.random_seed)
 
-    train_dst, val_dst, test_dst, n_classes = get_dataset(opts)
+    # When the model is training on filling dataset as testset we need to add 
+    # PERM and PRIM validation set
+    if opts.dataset == 'dent' and opts.step == 2:
+        train_dst, val_dst, test_dst_1, test_dst_2, n_classes = get_dataset(opts)
+    else:
+        train_dst, val_dst, test_dst, n_classes = get_dataset(opts)
+
     # reset the seed, this revert changes in random seed
     random.seed(opts.random_seed)
 
@@ -139,9 +185,12 @@ def main(opts):
                                    num_workers=opts.num_workers,)
     val_loader = data.DataLoader(val_dst, batch_size=opts.batch_size if opts.crop_val else 1,
                                    num_workers=opts.num_workers)
-
-    logger.info(f"Dataset: {opts.dataset}, Train set: {len(train_dst)}, Val set: {len(val_dst)},"
-                f" Test set: {len(test_dst)}, n_classes {n_classes}")
+    if opts.dataset == 'dent' and opts.step == 2:
+        logger.info(f"Dataset: {opts.dataset}, Train set: {len(train_dst)}, Val set: {len(val_dst)},"
+                    f" Test set: {len(test_dst_1)} _ {len(test_dst_2)}, n_classes {n_classes}")
+    else:
+        logger.info(f"Dataset: {opts.dataset}, Train set: {len(train_dst)}, Val set: {len(val_dst)},"
+                    f" Test set: {len(test_dst)}, n_classes {n_classes}")
     # logger.info(f"Total batch size is {opts.batch_size * world_size}")
 
     # xxx Set up model
@@ -149,7 +198,7 @@ def main(opts):
 
     step_checkpoint = None
     model = make_model(opts, classes=tasks.get_per_task_classes(opts.dataset, opts.task, opts.step))
-    logger.info(f"[!] Model made with{'out' if opts.no_pretrained else ''} pre-trained")
+    # logger.info(f"[!] Model made with{'out' if opts.no_pretrained else ''} pre-trained")
 
     if opts.step == 0:  # if step 0, we don't need to instance the model_old
         model_old = None
@@ -321,15 +370,22 @@ def main(opts):
         logger.info("[!] Checkpoint saved.")
 
     # torch.distributed.barrier()
+    
+    # since we don't have testset in first step we have to finish the run here -
+    if opts.dataset == 'dent' and opts.step == 0:
+        exit()
+    # --------------------------------------------------------------------------
 
     # xxx From here starts the test code
     logger.info("*** Test the model on all seen classes...")
     # make data loader
-    test_loader = data.DataLoader(test_dst, batch_size=opts.batch_size if opts.crop_val else 1,
+
+    if opts.dataset != 'dent' or opts.step != 2:
+        test_loader = data.DataLoader(test_dst, batch_size=opts.batch_size if opts.crop_val else 1,
                                   num_workers=opts.num_workers)
-    #we want print the samples
-    tot = len(test_loader)
-    sample_ids = np.array([5,tot//4,tot//2,tot//4+tot//2,tot-5])
+        #we want print the samples
+        tot = len(test_loader)
+        sample_ids = np.array([5,tot//4,tot//2,tot//4+tot//2,tot-5])
     
     # load best model
     if TRAIN:
@@ -345,30 +401,79 @@ def main(opts):
 
     model.eval()
 
-    val_loss, val_score, ret_samples = trainer.validate(loader=test_loader, metrics=val_metrics,ret_samples_ids = sample_ids, logger=logger)
-    logger.print("Done test")
-    logger.info(f"*** End of Test, Total Loss={val_loss[0]+val_loss[1]},"
-                f" Class Loss={val_loss[0]}, Reg Loss={val_loss[1]}")
-    logger.info(val_metrics.to_str(val_score))
-    logger.add_table("Test_Class_IoU", val_score['Class IoU'])
-    logger.add_table("Test_Class_Acc", val_score['Class Acc'])
-    logger.add_figure("Test_Confusion_Matrix", val_score['Confusion Matrix'])
-    results["T-IoU"] = val_score['Class IoU']
-    results["T-Acc"] = val_score['Class Acc']
-    logger.add_results(results)
+    if opts.dataset != 'dent' or opts.step == 1:
+        val_loss, val_score, ret_samples = trainer.validate(loader=test_loader, metrics=val_metrics,ret_samples_ids = sample_ids, logger=logger)
+        logger.print("Done test")
+        logger.info(f"*** End of Test, Total Loss={val_loss[0]+val_loss[1]},"
+                    f" Class Loss={val_loss[0]}, Reg Loss={val_loss[1]}")
+        logger.info(val_metrics.to_str(val_score))
+        logger.add_table("Test_Class_IoU", val_score['Class IoU'])
+        logger.add_table("Test_Class_Acc", val_score['Class Acc'])
+        logger.add_figure("Test_Confusion_Matrix", val_score['Confusion Matrix'])
+        results["T-IoU"] = val_score['Class IoU']
+        results["T-Acc"] = val_score['Class Acc']
+        logger.add_results(results)
 
-    logger.add_scalar("T_Overall_Acc", val_score['Overall Acc'], opts.step)
-    logger.add_scalar("T_MeanIoU", val_score['Mean IoU'], opts.step)
-    logger.add_scalar("T_MeanAcc", val_score['Mean Acc'], opts.step)
-    for k, (img, target, lbl) in enumerate(ret_samples):
-        img = (denorm(img) * 255).astype(np.uint8)
-        target = label2color(target).transpose(2, 0, 1).astype(np.uint8)
-        lbl = label2color(lbl).transpose(2, 0, 1).astype(np.uint8)
+        logger.add_scalar("T_Overall_Acc", val_score['Overall Acc'], opts.step)
+        logger.add_scalar("T_MeanIoU", val_score['Mean IoU'], opts.step)
+        logger.add_scalar("T_MeanAcc", val_score['Mean Acc'], opts.step)
+        for k, (img, target, lbl) in enumerate(ret_samples):
+            img = (denorm(img) * 255).astype(np.uint8)
+            target = label2color(target).transpose(2, 0, 1).astype(np.uint8)
+            lbl = label2color(lbl).transpose(2, 0, 1).astype(np.uint8)
 
-        concat_img = np.concatenate((img, target, lbl), axis=2)  # concat along width
-        logger.add_image(f'Test_{k}', concat_img, 0)
-    logger.close()
+            concat_img = np.concatenate((img, target, lbl), axis=2)  # concat along width
+            logger.add_image(f'Test_{k}', concat_img, 0)
+        logger.close()
 
+    elif opts.dataset == 'dent' and opts.step == 2:
+        # First testset
+        test_loader_1 = data.DataLoader(test_dst_1, batch_size=opts.batch_size if opts.crop_val else 1,
+                                  num_workers=opts.num_workers)
+        #we want print the samples
+        tot = len(test_loader_1)
+        sample_ids = np.array([5,tot//4,tot//2,tot//4+tot//2,tot-5])
+
+        val_loss, val_score, ret_samples = trainer.validate(loader=test_loader_1, metrics=val_metrics,ret_samples_ids = sample_ids, logger=logger)
+        logger.print("Done test")
+        logger.info(f"*** End of Test, Total Loss={val_loss[0]+val_loss[1]},"
+                    f" Class Loss={val_loss[0]}, Reg Loss={val_loss[1]}")
+        logger.info(val_metrics.to_str(val_score))
+        logger.add_table("Test_Class_IoU", val_score['Class IoU'])
+        logger.add_table("Test_Class_Acc", val_score['Class Acc'])
+        logger.add_figure("Test_Confusion_Matrix", val_score['Confusion Matrix'])
+        results["T-IoU"] = val_score['Class IoU']
+        results["T-Acc"] = val_score['Class Acc']
+        logger.add_results(results)
+
+        logger.add_scalar("T_Overall_Acc", val_score['Overall Acc'], opts.step)
+        logger.add_scalar("T_MeanIoU", val_score['Mean IoU'], opts.step)
+        logger.add_scalar("T_MeanAcc", val_score['Mean Acc'], opts.step)
+        logger.close()
+
+        # Second test loader
+        test_loader_2 = data.DataLoader(test_dst_2, batch_size=opts.batch_size if opts.crop_val else 1,
+                                  num_workers=opts.num_workers)
+        #we want print the samples
+        tot = len(test_loader_2)
+        sample_ids = np.array([5,tot//4,tot//2,tot//4+tot//2,tot-5])
+
+        val_loss, val_score, ret_samples = trainer.validate(loader=test_loader_2, metrics=val_metrics,ret_samples_ids = sample_ids, logger=logger)
+        logger.print("Done test")
+        logger.info(f"*** End of Test, Total Loss={val_loss[0]+val_loss[1]},"
+                    f" Class Loss={val_loss[0]}, Reg Loss={val_loss[1]}")
+        logger.info(val_metrics.to_str(val_score))
+        logger.add_table("Test_Class_IoU", val_score['Class IoU'])
+        logger.add_table("Test_Class_Acc", val_score['Class Acc'])
+        logger.add_figure("Test_Confusion_Matrix", val_score['Confusion Matrix'])
+        results["T-IoU"] = val_score['Class IoU']
+        results["T-Acc"] = val_score['Class Acc']
+        logger.add_results(results)
+
+        logger.add_scalar("T_Overall_Acc", val_score['Overall Acc'], opts.step)
+        logger.add_scalar("T_MeanIoU", val_score['Mean IoU'], opts.step)
+        logger.add_scalar("T_MeanAcc", val_score['Mean Acc'], opts.step)
+        logger.close()
 
 if __name__ == '__main__':
     parser = argparser.get_argparser()

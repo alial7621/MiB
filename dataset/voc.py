@@ -49,8 +49,8 @@ class VOCSegmentation(data.Dataset):
 
         self.image_set = image_set
         base_dir = "PascalVOC12"
-        # voc_root = os.path.join(self.root, base_dir)
-        voc_root = base_dir
+        voc_root = os.path.join(self.root, base_dir)
+        # voc_root = base_dir
         splits_dir = os.path.join(voc_root, 'splits')
 
         if not os.path.isdir(voc_root):
@@ -128,6 +128,7 @@ class VOCSegmentationIncremental(data.Dataset):
             # take index of images with at least one class in labels and all classes in labels+labels_old+[0,255]
             if idxs_path is not None and os.path.exists(idxs_path):
                 idxs = np.load(idxs_path).tolist()
+
             else:
                 idxs, _ = filter_images(full_voc, labels, labels_old, overlap=overlap)
                 if idxs_path is not None:

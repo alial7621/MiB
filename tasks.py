@@ -128,10 +128,15 @@ tasks_ade = {
              150]
          }
 }
+tasks_dent = {
+  "1-1": {0: [0, 1],
+          1: [2],
+          2: [3]}
+}
 
 
 def get_task_list():
-    return list(tasks_voc.keys()) + list(tasks_ade.keys())
+    return list(tasks_voc.keys()) + list(tasks_ade.keys()) + list(tasks_dent.keys())
 
 
 def get_task_labels(dataset, name, step):
@@ -139,6 +144,8 @@ def get_task_labels(dataset, name, step):
         task_dict = tasks_voc[name]
     elif dataset == 'ade':
         task_dict = tasks_ade[name]
+    elif dataset == 'dent':
+        task_dict = tasks_dent[name]
     else:
         raise NotImplementedError
     assert step in task_dict.keys(), f"You should provide a valid step! [{step} is out of range]"
@@ -153,6 +160,8 @@ def get_per_task_classes(dataset, name, step):
         task_dict = tasks_voc[name]
     elif dataset == 'ade':
         task_dict = tasks_ade[name]
+    elif dataset == 'dent':
+        task_dict = tasks_dent[name]
     else:
         raise NotImplementedError
     assert step in task_dict.keys(), f"You should provide a valid step! [{step} is out of range]"

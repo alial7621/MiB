@@ -96,7 +96,8 @@ class EWC(Regularizer):
     def update(self):
         # suppose model have already grad computed, so we can directly update the fisher by getting model.parameters
         for n, p in self.model.named_parameters():
-            self.fisher[n] = (self.alpha * (p.grad ** 2)) + ((1 - self.alpha) * self.fisher[n])
+            if p.grad is not None:
+                self.fisher[n] = (self.alpha * (p.grad ** 2)) + ((1 - self.alpha) * self.fisher[n])
 
     def penalty(self):
         if not self.penalize:
@@ -171,7 +172,8 @@ class PI(Regularizer):  # Path integral
                     self.delta[n] += delta  # approximation of path integral
         # update model temp
         self.model_temp = {k: torch.clone(p).detach().cpu()
-                           for k, p in self.model.named_parameters() if p.grad is not None}
+                           for k, p in self.model.named_parameters()}
+                            # if p.grad is not None
 
     def penalty(self):
         loss = 0
@@ -270,7 +272,8 @@ class RW(Regularizer):
                         self.score[n] += (delta / den)
             # update model temp
             self.model_temp = {k: torch.clone(p).detach().cpu()
-                               for k, p in self.model.named_parameters() if p.grad is not None}
+                               for k, p in self.model.named_parameters()}
+                                # if p.grad is not None}
         self.count += 1
 
         for n, p in self.model.named_parameters():

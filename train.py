@@ -2,6 +2,7 @@ import torch
 from tqdm import tqdm
 # from torch import distributed
 import torch.nn as nn
+import numpy as np
 # from apex import amp
 from torch.cuda import amp
 from functools import reduce
@@ -186,8 +187,6 @@ class Trainer:
         reg_loss = reg_loss / len(train_loader)
 
         logger.info(f"Epoch {cur_epoch}, Class Loss={epoch_loss}, Reg Loss={reg_loss}")
-        epoch_loss = epoch_loss / len(train_loader)
-        reg_loss = reg_loss / len(train_loader)
         return (epoch_loss, reg_loss)
 
     def validate(self, loader, metrics, ret_samples_ids=None, logger=None):
@@ -217,8 +216,9 @@ class Trainer:
                     with torch.no_grad():
                         outputs_old = self.model_old(images)
                         features_old = self.model_old.features
-
+                
                 outputs = model(images)
+
                 features = model.features
                 # xxx BCE / Cross Entropy Loss
                 if not self.icarl_only_dist:
@@ -262,6 +262,10 @@ class Trainer:
 
                 labels = labels.cpu().numpy()
                 prediction = prediction.cpu().numpy()
+                # print(f'prediction shape ===================>>>>>>>>>>>>{prediction.shape}')
+                # print(f'prediction ===================>>>>>>>>>>>>{np.unique(prediction)}')
+                # print(f'labels shape ===================>>>>>>>>>>>>{labels.shape}')
+                # print(f'labels ===================>>>>>>>>>>>>{np.unique(labels)}\n\n')
                 metrics.update(labels, prediction)
 
                 if ret_samples_ids is not None and i in ret_samples_ids:  # get samples
@@ -283,8 +287,8 @@ class Trainer:
             # torch.distributed.reduce(reg_loss, dst=0)
 
             # if distributed.get_rank() == 0:
-            class_loss = class_loss / distributed.get_world_size() / len(loader)
-            reg_loss = reg_loss / distributed.get_world_size() / len(loader)
+            class_loss = class_loss / len(loader)
+            reg_loss = reg_loss / len(loader)
 
             if logger is not None:
                 logger.info(f"Validation, Class Loss={class_loss}, Reg Loss={reg_loss} (without scaling)")

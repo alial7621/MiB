@@ -7,6 +7,8 @@ def modify_command_options(opts):
         opts.num_classes = 21
     if opts.dataset == 'ade':
         opts.num_classes = 150
+    if opts.dataset == 'dent':
+        opts.num_classes = 4
 
     if not opts.visualize:
         opts.sample_num = 0
@@ -57,8 +59,11 @@ def get_argparser():
     # Datset Options
     parser.add_argument("--data_root", type=str, default='data',
                         help="path to Dataset")
+    # Annotation path for our dataset
+    parser.add_argument("--annot_root", type=str, default='./AnnotationFiles',
+                        help="path to Annotation file")
     parser.add_argument("--dataset", type=str, default='voc',
-                        choices=['voc', 'ade'], help='Name of dataset')
+                        choices=['voc', 'ade', 'dent'], help='Name of dataset')
     parser.add_argument("--num_classes", type=int, default=None,
                         help="num classes (default: None)")
 

@@ -1,7 +1,10 @@
+#Changes in this repository
+This repository has been modified specifically for training on a custom dataset. Since the dataset utilizes coco-like annotation, this repository can be further customized to work with any coco-like dataset. Furthermore, the original code supports parallel processing, while the code I've forked was designed for single GPU training but had some issues that have now been resolved in this repository.
+
 # Modeling the Background for Incremental Learning in Semantic Segmentation
 This is the official PyTorch implementation of our work: "Modeling the Background for Incremental Learning in Semantic Segmentation" accepted at CVPR 2020.
 
-In this paper, we present a novel approach and we define a new evaluation benchmark for incremental learning in semantic segmentation. We asses the performance of our method and previous state-of-the-art methods on Pascal-VOC 2012 and ADE20K datasets. 
+In this paper, we present a novel approach and we define a new evaluation benchmark for incremental learning in semantic segmentation. We assess the performance of our method and previous state-of-the-art methods on Pascal-VOC 2012 and ADE20K datasets. 
 
 ![teaser](https://raw.githubusercontent.com/fcdl94/MiB/master/teaser.png)
 
